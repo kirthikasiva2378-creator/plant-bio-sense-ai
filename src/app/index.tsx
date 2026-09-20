@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useAuth } from '@/context/auth-context';
 import { useTheme } from '@/hooks/use-theme';
 import {
   MOCK_USER_PROFILE,
@@ -25,6 +26,10 @@ import {
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const { user } = useAuth();
+
+  const displayName = user?.name ? user.name : 'Welcome to Plant BioSense';
+  const initial = user?.name ? user.name.charAt(0).toUpperCase() : 'PB';
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
@@ -40,8 +45,8 @@ export default function HomeScreen() {
               <Text style={[styles.greetingText, { color: theme.textSecondary }]}>
                 {MOCK_USER_PROFILE.greeting}
               </Text>
-              <Text style={[styles.headerTitle, { color: theme.text }]}>
-                {MOCK_USER_PROFILE.name}
+              <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
+                {displayName}
               </Text>
             </View>
 
@@ -50,13 +55,13 @@ export default function HomeScreen() {
               onPress={() => router.push('/profile')}
               style={({ pressed }) => [
                 styles.avatarButton,
-                { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+                { backgroundColor: theme.softGreen, borderColor: theme.border },
                 pressed && styles.pressed,
               ]}
               accessibilityLabel="View Profile"
               accessibilityRole="button">
               <Text style={[styles.avatarText, { color: theme.primary }]}>
-                {MOCK_USER_PROFILE.avatarInitials}
+                {initial}
               </Text>
             </Pressable>
           </View>

@@ -62,15 +62,13 @@ export default function AppTabs() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon name="profile" color={color} focused={focused} />
-          ),
-        }}
-      />
+      {/* Hidden screens from bottom tabs */}
+      <Tabs.Screen name="profile" options={{ href: null }} />
+      <Tabs.Screen name="landing" options={{ href: null }} />
+      <Tabs.Screen name="signup" options={{ href: null }} />
+      <Tabs.Screen name="login" options={{ href: null }} />
+      <Tabs.Screen name="add-crop" options={{ href: null }} />
+      <Tabs.Screen name="crop-details" options={{ href: null }} />
     </Tabs>
   );
 }

@@ -5,6 +5,8 @@ import { CropItem, MOCK_CROPS_LIST } from '@/services/mock-data';
 interface CropsContextType {
   crops: CropItem[];
   addCrop: (data: { name: string; variety?: string; growingType: string }) => void;
+  deleteCrop: (id: string) => CropItem | undefined;
+  restoreCrop: (crop: CropItem) => void;
   getCropById: (id: string) => CropItem | undefined;
   clearAllCrops: () => void;
   resetToDefaultCrops: () => void;
@@ -68,6 +70,16 @@ export function CropsProvider({ children }: { children: React.ReactNode }) {
     setCrops((prev) => [newCrop, ...prev]);
   };
 
+  const deleteCrop = (id: string) => {
+    const targetCrop = crops.find((c) => c.id === id);
+    setCrops((prev) => prev.filter((item) => item.id !== id));
+    return targetCrop;
+  };
+
+  const restoreCrop = (crop: CropItem) => {
+    setCrops((prev) => [crop, ...prev]);
+  };
+
   const getCropById = (id: string) => {
     return crops.find((item) => item.id === id);
   };
@@ -85,6 +97,8 @@ export function CropsProvider({ children }: { children: React.ReactNode }) {
       value={{
         crops,
         addCrop,
+        deleteCrop,
+        restoreCrop,
         getCropById,
         clearAllCrops,
         resetToDefaultCrops,

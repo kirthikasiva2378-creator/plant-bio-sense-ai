@@ -1,11 +1,14 @@
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   ScrollView,
   Pressable,
+  Modal,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -14,13 +17,140 @@ import { Card } from '@/components/ui/card';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useCrops } from '@/context/crops-context';
 import { useTheme } from '@/hooks/use-theme';
+import { CropItem } from '@/services/mock-data';
+
+interface SwipeableCropCardProps {
+  crop: CropItem;
+  onPress: () => void;
+  onDeleteReq: (crop: CropItem) => void;
+}
+
+function SwipeableCropCard({ crop, onPress, onDeleteReq }: SwipeableCropCardProps) {
+  const theme = useTheme();
+  const pan = useRef(new Animated.ValueXY()).current;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 15 && Math.abs(gestureState.dy) < 15;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dx < 0) {
+          pan.setValue({ x: Math.max(-100, gestureState.dx), y: 0 });
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dx < -50) {
+          Animated.spring(pan, {
+            toValue: { x: -80, y: 0 },
+            useNativeDriver: false,
+          }).start();
+        } else {
+          Animated.spring(pan, {
+            toValue: { x: 0, y: 0 },
+            useNativeDriver: false,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  const resetSwipe = () => {
+    Animated.spring(pan, {
+      toValue: { x: 0, y: 0 },
+      useNativeDriver: false,
+    }).start();
+  };
+
+  return (
+    <View style={styles.swipeContainer}>
+      {/* REAR DELETE ACTION */}
+      <View style={styles.rearDeleteContainer}>
+        <Pressable
+          onPress={() => {
+            resetSwipe();
+            onDeleteReq(crop);
+          }}
+          style={({ pressed }) => [
+            styles.deleteActionButton,
+            pressed && styles.pressed,
+          ]}>
+          <Text style={styles.deleteActionIcon}>🗑️</Text>
+          <Text style={styles.deleteActionText}>Delete</Text>
+        </Pressable>
+      </View>
+
+      {/* FRONT CARD CONTENT */}
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={[
+          styles.frontCardWrapper,
+          { transform: [{ translateX: pan.x }] },
+        ]}>
+        <Card onPress={onPress} style={styles.cropCard}>
+          <View style={styles.cropCardRow}>
+            {/* EMOJI ICON */}
+            <View style={[styles.cropIconWrapper, { backgroundColor: theme.backgroundElement }]}>
+              <Text style={styles.cropEmoji}>{crop.icon}</Text>
+            </View>
+
+            {/* CROP DETAILS */}
+            <View style={styles.cropDetailsGroup}>
+              <View style={styles.cropTitleRow}>
+                <Text style={[styles.cropName, { color: theme.text }]}>
+                  {crop.name}
+                </Text>
+                <Badge label={crop.status} statusType={crop.statusType} />
+              </View>
+
+              <Text style={[styles.cropSubInfo, { color: theme.textSecondary }]}>
+                {crop.growingType}{crop.variety ? ` • ${crop.variety}` : ''}
+              </Text>
+
+              <View style={styles.cropFooterRow}>
+                <Text style={[styles.lastCheckedText, { color: theme.textSecondary }]}>
+                  Last checked: {crop.lastChecked}
+                </Text>
+
+                <Text style={[styles.scoreText, { color: theme.primary }]}>
+                  {crop.healthScore}% health
+                </Text>
+              </View>
+            </View>
+          </View>
+        </Card>
+      </Animated.View>
+    </View>
+  );
+}
 
 export default function CropsScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { crops, clearAllCrops, resetToDefaultCrops } = useCrops();
+  const { crops, deleteCrop, restoreCrop, clearAllCrops, resetToDefaultCrops } = useCrops();
+
+  // Confirmation Modal state
+  const [targetToDelete, setTargetToDelete] = useState<CropItem | null>(null);
+  const [recentlyDeleted, setRecentlyDeleted] = useState<CropItem | null>(null);
 
   const isEmpty = crops.length === 0;
+
+  const confirmDelete = () => {
+    if (targetToDelete) {
+      const deleted = deleteCrop(targetToDelete.id);
+      if (deleted) {
+        setRecentlyDeleted(deleted);
+      }
+      setTargetToDelete(null);
+    }
+  };
+
+  const handleUndo = () => {
+    if (recentlyDeleted) {
+      restoreCrop(recentlyDeleted);
+      setRecentlyDeleted(null);
+    }
+  };
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
@@ -41,7 +171,7 @@ export default function CropsScreen() {
               </Text>
             </View>
 
-            {/* + ADD CROP BUTTON */}
+            {/* 🌱 ADD CROP BUTTON */}
             <Pressable
               onPress={() => router.push('/add-crop')}
               style={({ pressed }) => [
@@ -51,11 +181,11 @@ export default function CropsScreen() {
               ]}
               accessibilityLabel="Add New Crop"
               accessibilityRole="button">
-              <Text style={styles.addCropButtonText}>+ Add Crop</Text>
+              <Text style={styles.addCropButtonText}>🌱 Add Crop</Text>
             </Pressable>
           </View>
 
-          {/* TESTING TOGGLES (Allows testing empty state vs default state) */}
+          {/* SWIPE INSTRUCTION / TESTING CONTROLS */}
           <View style={styles.stateControlsRow}>
             {isEmpty ? (
               <Pressable
@@ -66,13 +196,9 @@ export default function CropsScreen() {
                 </Text>
               </Pressable>
             ) : (
-              <Pressable
-                onPress={clearAllCrops}
-                style={({ pressed }) => [pressed && styles.pressed]}>
-                <Text style={[styles.controlLink, { color: theme.textSecondary }]}>
-                  Testing: Clear all crops (Test Empty State)
-                </Text>
-              </Pressable>
+              <Text style={[styles.swipeTipText, { color: theme.textSecondary }]}>
+                Tip: Swipe left on any crop to delete
+              </Text>
             )}
           </View>
 
@@ -102,56 +228,83 @@ export default function CropsScreen() {
                 ]}
                 accessibilityLabel="Add Your First Crop"
                 accessibilityRole="button">
-                <Text style={styles.emptyStateButtonText}>+ Add Your First Crop</Text>
+                <Text style={styles.emptyStateButtonText}>🌱 Add Your First Crop</Text>
               </Pressable>
             </Card>
           ) : (
-            /* CROPS LIST VIEW */
+            /* CROPS LIST VIEW WITH SWIPE DELETE */
             <View style={styles.cropsGrid}>
               {crops.map((crop) => (
-                <Card
+                <SwipeableCropCard
                   key={crop.id}
+                  crop={crop}
                   onPress={() =>
                     router.push({
                       pathname: '/crop-details',
                       params: { id: crop.id },
                     })
                   }
-                  style={styles.cropCard}>
-                  <View style={styles.cropCardRow}>
-                    {/* EMOJI ICON */}
-                    <View style={[styles.cropIconWrapper, { backgroundColor: theme.backgroundElement }]}>
-                      <Text style={styles.cropEmoji}>{crop.icon}</Text>
-                    </View>
-
-                    {/* CROP DETAILS */}
-                    <View style={styles.cropDetailsGroup}>
-                      <View style={styles.cropTitleRow}>
-                        <Text style={[styles.cropName, { color: theme.text }]}>
-                          {crop.name}
-                        </Text>
-                        <Badge label={crop.status} statusType={crop.statusType} />
-                      </View>
-
-                      <Text style={[styles.cropSubInfo, { color: theme.textSecondary }]}>
-                        {crop.growingType}{crop.variety ? ` • ${crop.variety}` : ''}
-                      </Text>
-
-                      <View style={styles.cropFooterRow}>
-                        <Text style={[styles.lastCheckedText, { color: theme.textSecondary }]}>
-                          Last checked: {crop.lastChecked}
-                        </Text>
-
-                        <Text style={[styles.scoreText, { color: theme.primary }]}>
-                          {crop.healthScore}% health
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                </Card>
+                  onDeleteReq={(item) => setTargetToDelete(item)}
+                />
               ))}
             </View>
           )}
+
+          {/* UNDO TOAST NOTIFICATION */}
+          {!!recentlyDeleted && (
+            <View style={[styles.undoToast, { backgroundColor: theme.text }]}>
+              <Text style={styles.undoText}>
+                Removed {recentlyDeleted.name}
+              </Text>
+              <Pressable onPress={handleUndo} style={styles.undoButton}>
+                <Text style={[styles.undoButtonText, { color: theme.accent }]}>
+                  UNDO
+                </Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* CONFIRMATION DELETE MODAL */}
+          <Modal
+            visible={!!targetToDelete}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setTargetToDelete(null)}>
+            <View style={styles.modalOverlay}>
+              <Card style={styles.modalCard}>
+                <Text style={styles.modalEmoji}>🗑️</Text>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>
+                  Remove {targetToDelete?.name}?
+                </Text>
+                <Text style={[styles.modalBody, { color: theme.textSecondary }]}>
+                  Are you sure you want to remove this crop from your monitored list?
+                </Text>
+
+                <View style={styles.modalActions}>
+                  <Pressable
+                    onPress={() => setTargetToDelete(null)}
+                    style={({ pressed }) => [
+                      styles.modalCancelButton,
+                      { backgroundColor: theme.backgroundElement },
+                      pressed && styles.pressed,
+                    ]}>
+                    <Text style={[styles.modalCancelText, { color: theme.text }]}>
+                      Cancel
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={confirmDelete}
+                    style={({ pressed }) => [
+                      styles.modalRemoveButton,
+                      pressed && styles.pressedButton,
+                    ]}>
+                    <Text style={styles.modalRemoveText}>Remove</Text>
+                  </Pressable>
+                </View>
+              </Card>
+            </View>
+          </Modal>
 
         </View>
       </ScrollView>
@@ -200,7 +353,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   addCropButton: {
-    paddingHorizontal: Spacing.three + 2,
+    paddingHorizontal: Spacing.three + 4,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',
@@ -212,20 +365,59 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  /* CONTROLS */
+  /* CONTROLS & TIPS */
   stateControlsRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: Spacing.one,
+  },
+  swipeTipText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   controlLink: {
     fontSize: 12,
     fontWeight: '600',
   },
 
-  /* CROPS GRID */
+  /* CROPS GRID & SWIPEABLE CARD */
   cropsGrid: {
     gap: Spacing.three,
+  },
+  swipeContainer: {
+    position: 'relative',
+    borderRadius: Spacing.three,
+    overflow: 'hidden',
+  },
+  rearDeleteContainer: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 80,
+    backgroundColor: '#D32F2F',
+    borderRadius: Spacing.three,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteActionButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: '100%',
+    gap: 2,
+  },
+  deleteActionIcon: {
+    fontSize: 18,
+  },
+  deleteActionText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  frontCardWrapper: {
+    width: '100%',
   },
   cropCard: {
     padding: Spacing.three + 2,
@@ -318,6 +510,88 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emptyStateButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
+  /* UNDO TOAST */
+  undoToast: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.two + 2,
+    marginTop: Spacing.two,
+  },
+  undoText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  undoButton: {
+    paddingHorizontal: Spacing.two,
+  },
+  undoButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+
+  /* MODAL */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.four,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+    padding: Spacing.four,
+    gap: Spacing.three,
+  },
+  modalEmoji: {
+    fontSize: 36,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  modalBody: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: Spacing.three,
+    marginTop: Spacing.two,
+    width: '100%',
+  },
+  modalCancelButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  modalRemoveButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#D32F2F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalRemoveText: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
